@@ -6,8 +6,7 @@ This piece of software hooks to the encryption function and
 let you intercept messages as they go.
 
 ## Future updates:
-1.intercepting Recv messages.
-
+1.intercepting Recv messages.<br/>
 2.Modify messages.
 
 3.Injecting packets for send or recv.
