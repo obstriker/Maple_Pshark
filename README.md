@@ -7,8 +7,6 @@ let you intercept messages as they go.
 
 ## Future updates:
 1.intercepting Recv messages.<br/>
-2.Modify messages.
-
-3.Injecting packets for send or recv.
-
-4.packet filtering / macros for packet modification.
+2.Modify messages.<br/>
+3.Injecting packets for send or recv.<br/>
+4.packet filtering / macros for packet modification.<br/>
