@@ -17,12 +17,14 @@ static BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved)
 
 void* ModuleBase = GetModuleHandle(L"MapleRoyals.exe");
 
-static ULONG encryption_function_ptr = 0x9637B;
+static ULONG COutPacketAddr = 0x9637B;
+static ULONG CInPacketAddr =  0x965F1;
 
 void* message_buff = NULL;
 int* opcodeparam;
 
-DWORD jmpBackAddy;
+DWORD jmpBack_SendPacket;
+DWORD jmpBack_RecvPacket;
 
 static void hexdump(void *pAddressIn, long  lSize)
 {
@@ -171,7 +173,7 @@ static void SendPacketCallback() {
 }
 
 
-void __declspec(naked) ourFunct() {
+void __declspec(naked) SendPacketHook() {
 
 	__asm {
 		//Save registers
@@ -187,7 +189,7 @@ void __declspec(naked) ourFunct() {
 		//The first 5 bytes that run over by the hook
 		mov eax, opcodeparam;
 		//jump back to the normal execution of the function.
-		jmp[jmpBackAddy];
+		jmp[jmpBack_SendPacket];
 	}
 }
 
@@ -196,16 +198,20 @@ static DWORD WINAPI MainThread(LPVOID param) {
 	DWORD hookAddress = 0x00;
 
 	OpenConsole();
-
 	ModuleBase = GetModuleHandle(L"MapleRoyals.exe");
-
 	printf("Mapleroyals.exe address: %p\n", ModuleBase);
 
-	hookAddress = (DWORD)ModuleBase + (DWORD)encryption_function_ptr; // Pointer to encryption func (before encryption)
+	//send packet hook
+	hookAddress = (DWORD)ModuleBase + (DWORD)COutPacketAddr; // Pointer to send func (before encryption)
+	jmpBack_SendPacket = hookAddress + hookLength;
+	Hook((void*)hookAddress, SendPacketHook, hookLength);
 
-	jmpBackAddy = hookAddress + hookLength;
-
-	Hook((void*)hookAddress, ourFunct, hookLength);
+	//recv packet hook
+	/*
+	hookAddress = (DWORD)ModuleBase + (DWORD)CInPacketAddr; // Pointer to recv func (before decryption)
+	jmpBack_RecvPacket = hookAddress + hookLength;
+	Hook((void*)hookAddress, SendPacketHook, hookLength);
+	*/
 
 	while (true) {
 		if (GetAsyncKeyState(VK_ESCAPE)) break;
