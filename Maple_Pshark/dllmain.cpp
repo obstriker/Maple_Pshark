@@ -3,10 +3,14 @@
 #include <iostream>
 #include <Windows.h>
 #include <string.h>
-#include<stdio.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "Filter.h"
 
 #define PACKET_HEADER_SIZE 0x4
 #define PACKET_IDENTIFIER_SIZE 0x2
+
+using namespace std;
 
 static void hexdump(void* pAddressIn, long  lSize);
 static void OpenConsole();
@@ -16,13 +20,17 @@ static DWORD WINAPI MainThread(LPVOID param);
 static BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved);
 
 void* ModuleBase = GetModuleHandle(L"MapleRoyals.exe");
+Filter basic_filtering = Filter("Basic");
 
 static ULONG COutPacketAddr = 0x9637B;
+static ULONG COutPacketAddr_end = 0x96400;
 static ULONG CInPacketAddr =  0x965F1;
 
 void* message_buff = NULL;
 int* opcodeparam;
+int droppacket = 0;
 
+DWORD PacketSend_end;
 DWORD jmpBack_SendPacket;
 DWORD jmpBack_RecvPacket;
 
@@ -91,8 +99,6 @@ static void OpenConsole()
 	printf("Console initialized.\n");
 }
 
-
-
 static bool Hook(void* toHook, void* ourFunct, int len) {
 	if (len < 5) {
 		return false;
@@ -118,6 +124,16 @@ static bool Hook(void* toHook, void* ourFunct, int len) {
 //manipulate packet coming and going from the game client.
 
 
+static void filter_packet()
+{
+	droppacket = 0;
+	int retval = basic_filtering.filter_action((char*)message_buff);
+	if (retval < 0)
+	{
+		printf("\nretval: %d \n login packet avoided!", retval);
+		droppacket = retval ;
+	}
+}
 
 /*Message login example: 01 00 0B 00 6D 79 75 73 65 72 6E 61 6D 65 31 07 00 6D 79 70 61 73 73 77 0A 00 27 00 00 13 95 E9 EF 5A 00 00 00 00 C1 55 00 00 00 00 02 00 00 00 00 00 00*/
 static bool check_for_password(char* message_buff) {
@@ -157,7 +173,6 @@ static void record_password(char* message_buff) {
 
 	return;
 }
-
 static void SendPacketCallback() {
 
 	if (check_for_password((char*)message_buff)){
@@ -182,6 +197,7 @@ void __declspec(naked) SendPacketHook() {
 		mov eax, [ebp - 18h];
 		mov message_buff, eax;
 
+		call filter_packet;
 		call SendPacketCallback;
 		//Restore registers
 		popad;
@@ -189,6 +205,11 @@ void __declspec(naked) SendPacketHook() {
 		//The first 5 bytes that run over by the hook
 		mov eax, opcodeparam;
 		//jump back to the normal execution of the function.
+		cmp droppacket, 0;
+		je pass;
+		jmp[PacketSend_end];
+
+		pass:
 		jmp[jmpBack_SendPacket];
 	}
 }
@@ -196,10 +217,30 @@ void __declspec(naked) SendPacketHook() {
 static DWORD WINAPI MainThread(LPVOID param) {
 	int hookLength = 5;
 	DWORD hookAddress = 0x00;
+	
 
 	OpenConsole();
 	ModuleBase = GetModuleHandle(L"MapleRoyals.exe");
 	printf("Mapleroyals.exe address: %p\n", ModuleBase);
+	PacketSend_end = (DWORD)ModuleBase + (DWORD)COutPacketAddr_end;
+
+	//Setup basic filtering rules	
+	modify_data mod = { 0 };
+	BYTE identify_bytes[] = { 0x1, 0x00 };
+	identifier ident;
+	ident.identifier = (char*)identify_bytes;
+	ident.place = 0;
+	ident.size = 2;
+	Rule login_rule = Rule("login", ident, ACTION_PASS, mod, 0);
+	basic_filtering.Add_rule(login_rule);
+
+	//Setup basic filtering rules	 - not working
+	BYTE identify_bytes_godmod[] = { 0x30, 0x00 };
+	ident.identifier = (char*)identify_bytes_godmod;
+	ident.place = 0;
+	ident.size = 2;
+	Rule godmod_rule = Rule("godmod", ident, ACTION_DROP, mod, 1);
+	basic_filtering.Add_rule(godmod_rule);
 
 	//send packet hook
 	hookAddress = (DWORD)ModuleBase + (DWORD)COutPacketAddr; // Pointer to send func (before encryption)
